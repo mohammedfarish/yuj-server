@@ -9,7 +9,7 @@ jobs:
   sync-to-prod:
     runs-on: ubuntu-latest
     permissions:
-      contents: read # checkout this repo with GITHUB_TOKEN; push uses PAT only
+      contents: read
 
     steps:
       - name: Validate secrets
@@ -20,7 +20,6 @@ jobs:
           fi
           echo "✓ Secret validation passed"
 
-      # Checkout uses default GITHUB_TOKEN (this repo only). PAT is used only for push to JB-Yuj/Backend.
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
