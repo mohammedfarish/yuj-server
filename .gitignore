@@ -1,0 +1,10 @@
+# Node Modules
+/node_modules
+
+# Local files
+.env
+.DS_Store
+
+
+# build files
+/dist
