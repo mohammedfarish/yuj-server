@@ -1,0 +1,96 @@
+name: Sync to Organization
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync-to-prod:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout this repo with GITHUB_TOKEN; push uses PAT only
+
+    steps:
+      - name: Validate secrets
+        run: |
+          if [ -z "${{ secrets.PROD_REPO_TOKEN }}" ]; then
+            echo "::error::PROD_REPO_TOKEN secret is not set. Please add it in repository settings."
+            exit 1
+          fi
+          echo "✓ Secret validation passed"
+
+      # Checkout uses default GITHUB_TOKEN (this repo only). PAT is used only for push to JB-Yuj/Backend.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Show commit information
+        run: |
+          echo "=== Commit Information ==="
+          echo "Latest commit: $(git log -1 --pretty=format:'%h - %s (%an, %ar)')"
+          echo "Branch: $(git branch --show-current)"
+          echo "Total commits: $(git rev-list --count HEAD)"
+          echo "========================="
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          echo "✓ Git configured"
+
+      - name: Add production remote
+        run: |
+          if git remote | grep -q "^prod$"; then
+            echo "Production remote already exists, updating URL..."
+            git remote set-url prod https://${{ secrets.PROD_REPO_TOKEN }}@github.com/JB-Yuj/Backend.git
+          else
+            echo "Adding production remote..."
+            git remote add prod https://${{ secrets.PROD_REPO_TOKEN }}@github.com/JB-Yuj/Backend.git
+          fi
+          echo "✓ Production remote configured"
+
+      - name: Fetch production repository
+        run: |
+          echo "Fetching production repository..."
+          if git fetch prod main 2>&1; then
+            echo "✓ Production branch fetched successfully"
+            echo "Production branch status:"
+            git log --oneline prod/main -5 || echo "No commits in production branch yet"
+          else
+            echo "⚠ Production branch doesn't exist yet, will create on first push"
+          fi
+
+      - name: Push to production
+        run: |
+          echo "=== Syncing to Production ==="
+          echo "Target: JB-Yuj/Backend (main)"
+          echo "=============================="
+
+          if git push prod main:main --force-with-lease 2>&1; then
+            echo "::notice::Successfully synced to production repository"
+            echo "✓ Push completed successfully"
+          else
+            echo "::error::Failed to push to production repository"
+            echo "This could be due to:"
+            echo "  1. Token doesn't have write access to production repo (JB-Yuj/Backend)"
+            echo "  2. PAT owner must have push access to JB-Yuj/Backend (e.g. org member)"
+            echo "  3. Production branch has diverged (use force-with-lease failed)"
+            echo "  4. Network or authentication issues"
+            echo ""
+            echo "Note: Use a Personal Access Token (PAT) from an account with push"
+            echo "access to JB-Yuj/Backend. Fine-grained PAT limited to that repo is recommended."
+            exit 1
+          fi
+
+      - name: Verify sync
+        run: |
+          echo "=== Sync Verification ==="
+          git fetch prod main
+          echo "Latest commit in production:"
+          git log prod/main -1 --pretty=format:'%h - %s (%an, %ar)' || echo "Could not verify"
+          echo "========================="
+          echo "::notice::Sync completed successfully!"
+          echo "Repository: JB-Yuj/Backend"
+          echo "Branch: main"
